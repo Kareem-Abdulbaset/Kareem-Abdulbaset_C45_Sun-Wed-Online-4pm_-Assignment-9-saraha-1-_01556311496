@@ -5,6 +5,7 @@ import asyncHandler from "express-async-handler";
 import { AppError } from "../../../utils/appError.js";
 import { sendOtpEmail, generateOtp } from "../../../utils/emailService.js";
 import { encryptData, decryptData } from "../../../utils/encryption.js";
+import { generateToken } from "../../../utils/token.js";
 
 const signup = asyncHandler(async (req, res, next) => {
     const { firstName, lastName, email, password, age, gender, phone } = req.body;
@@ -123,8 +124,28 @@ const login = asyncHandler(async (req, res, next) => {
         userExists._doc.decryptedPhone = decryptedPhone;
     }
 
-    res.status(200).json({ message: "User logged in successfully", userExists });
+    const token = generateToken({ id: userExists._id });
+
+    res.status(200).json({
+        message: "User logged in successfully",
+        token,
+        userExists,
+    });
+});
+
+const getProfile = asyncHandler(async (req, res, next) => {
+    const user = req.user;
+
+    if (user.phone) {
+        const decryptedPhone = decryptData(user.phone);
+        user._doc.decryptedPhone = decryptedPhone;
+    }
+
+    res.status(200).json({
+        message: "Profile fetched successfully",
+        user,
+    });
 });
 
 
-export { signup, login, verifyOtp, resendOtp };
+export { signup, login, verifyOtp, resendOtp, getProfile };
