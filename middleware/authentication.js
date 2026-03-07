@@ -1,6 +1,6 @@
 import { AppError } from "../utils/appError.js";
 import { verifyToken } from "../utils/token.js";
-import { userModel } from "../DB/Models/user.model.js";
+import { userModel } from "../DB/models/user.model.js";
 
 export const authentication = async (req, res, next) => {
     try {

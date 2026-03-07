@@ -5,25 +5,28 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true,
         minLength: 3,
-        maxLength: 5,
+        maxLength: 30,
         trim: true
     },
     lastName: {
         type: String,
         required: true,
         minLength: 3,
-        maxLength: 5,
+        maxLength: 30,
         trim: true
     },
     email: {
         type: String,
         required: true,
         unique: true,
-        trim: true
+        trim: true,
+        lowercase: true
     },
     password: {
         type: String,
-        required: true,
+        required: function () {
+            return this.provider === "system";
+        },
         minLength: 6,
         trim: true
     },
@@ -35,6 +38,7 @@ const userSchema = new mongoose.Schema({
         default: "male"
     },
     profilePicture: String,
+    profilePicturePublicId: String,
     phone: String,
     confirmed: {
         type: Boolean,
@@ -46,6 +50,11 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ["system", "google"],
         default: "system"
+    },
+    role: {
+        type: String,
+        enum: ["user", "admin"],
+        default: "user"
     }
 }, {
     timestamps: true,

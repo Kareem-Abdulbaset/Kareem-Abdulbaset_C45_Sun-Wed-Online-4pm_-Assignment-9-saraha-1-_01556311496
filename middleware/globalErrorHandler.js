@@ -45,6 +45,11 @@ export const globalErrorHandler = (err, req, res, next) => {
         message = handled.message;
     }
 
+    if (err.name === "MulterError") {
+        statusCode = 400;
+        message = err.message;
+    }
+
     res.status(statusCode).json({
         status: statusCode >= 500 ? "error" : "fail",
         message,
