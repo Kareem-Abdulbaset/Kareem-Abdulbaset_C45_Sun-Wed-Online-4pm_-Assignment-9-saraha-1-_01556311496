@@ -1,38 +1,39 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
-import connectDB from "./DB/connectionDB.js";
-import userRouter from "./DB/Modules/user/user.controller.js";
-import { globalErrorHandler } from "./middleware/globalErrorHandler.js";
-import { AppError } from "./utils/appError.js";
-import { generateKeyPair } from "./utils/encryption.js";
+import connectDB from "./DB/db.service.js";
+import userRouter from "./modules/users/user.controller.js";
+import { generateKeyPair } from "./security/encryption.js";
 
 const app = express();
-let port = 3000;
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const port = process.env.PORT || 3000;
 
 export default function bootstrap() {
-
     generateKeyPair();
 
     app.use(express.json());
-    app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
     app.get("/", (req, res) => {
-        res.send("Hello World!");
+        res.status(200).json({ message: "Saraha API is running" });
     });
 
     app.use("/users", userRouter);
 
-    connectDB();
-
-    app.use("/{*path}", (req, res, next) => {
-        next(new AppError(`Url ${req.originalUrl} not found`, 404));
+    app.use("/{*path}", (req, res) => {
+        res.status(404).json({ message: `Url ${req.originalUrl} not found` });
     });
 
-    app.use(globalErrorHandler);
+    app.use((err, req, res, next) => {
+        const statusCode = err.statusCode || 500;
+        const message = err.message || "Internal Server Error";
+        res.status(statusCode).json({
+            message,
+            ...(process.env.NODE_ENV === "development" && { stack: err.stack })
+        });
+    });
+
+    connectDB();
 
     app.listen(port, () => {
         console.log(`Server is running on port ${port}`);

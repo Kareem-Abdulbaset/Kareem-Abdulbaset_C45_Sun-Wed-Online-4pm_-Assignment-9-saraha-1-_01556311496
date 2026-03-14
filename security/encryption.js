@@ -16,28 +16,20 @@ export const generateKeyPair = () => {
     }
 
     if (fs.existsSync(PUBLIC_KEY_PATH) && fs.existsSync(PRIVATE_KEY_PATH)) {
-        console.log("RSA Key Pair already exists ✅");
         return {
             publicKey: fs.readFileSync(PUBLIC_KEY_PATH, "utf-8"),
-            privateKey: fs.readFileSync(PRIVATE_KEY_PATH, "utf-8"),
+            privateKey: fs.readFileSync(PRIVATE_KEY_PATH, "utf-8")
         };
     }
 
     const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
         modulusLength: 2048,
-        publicKeyEncoding: {
-            type: "spki",
-            format: "pem",
-        },
-        privateKeyEncoding: {
-            type: "pkcs8",
-            format: "pem",
-        },
+        publicKeyEncoding: { type: "spki", format: "pem" },
+        privateKeyEncoding: { type: "pkcs8", format: "pem" }
     });
 
     fs.writeFileSync(PUBLIC_KEY_PATH, publicKey);
     fs.writeFileSync(PRIVATE_KEY_PATH, privateKey);
-    console.log("RSA Key Pair generated successfully 🔐");
 
     return { publicKey, privateKey };
 };
@@ -48,7 +40,7 @@ export const encryptData = (data) => {
         {
             key: publicKey,
             padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-            oaepHash: "sha256",
+            oaepHash: "sha256"
         },
         Buffer.from(data, "utf-8")
     );
@@ -61,7 +53,7 @@ export const decryptData = (encryptedData) => {
         {
             key: privateKey,
             padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-            oaepHash: "sha256",
+            oaepHash: "sha256"
         },
         Buffer.from(encryptedData, "base64")
     );
