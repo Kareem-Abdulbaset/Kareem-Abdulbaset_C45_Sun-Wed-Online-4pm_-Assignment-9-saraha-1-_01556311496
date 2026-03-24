@@ -41,7 +41,10 @@ const userSchema = new mongoose.Schema(
             enum: Object.values(roleTypes),
             default: roleTypes.user
         },
-        profilePicture: String,
+        profilePicture: {
+            secure_url: String,
+            public_id: String,
+        },
         coverPictures: [String],
         gallery: [String],
         profileVisitCount: {
@@ -53,8 +56,35 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: false
         },
-        otp: String,
-        otpExpiry: Date,
+        twoStepVerification: {
+            type: Boolean,
+            default: false
+        },
+        otp: {
+            type: String,
+            default: null
+        },
+        otpExpiry: {
+            type: Date,
+            default: null
+        },
+        otpType: {
+            type: String,
+            default: null
+        },
+        failedLoginAttempts: {
+            type: Number,
+            default: 0
+        },
+        banUntil: {
+            type: Date,
+            default: null
+        },
+        emailConfirmationExpiresAt: {
+            type: Date,
+            default: null,
+            expires: 0
+        },
         provider: {
             type: String,
             enum: Object.values(providerTypes),
