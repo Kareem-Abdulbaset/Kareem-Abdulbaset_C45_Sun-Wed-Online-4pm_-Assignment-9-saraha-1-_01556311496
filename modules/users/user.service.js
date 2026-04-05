@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import { userModel } from "../../models/user.model.js";
 import { providerTypes } from "../../common/enum/user.enum.js";
 import { generateToken } from "../middlewares/token.js";
@@ -6,6 +7,7 @@ import { successResponse } from "../../common/utils/response.js";
 import { generateOtp, sendEmail } from "../../common/utils/email/send.email.js";
 
 const hashPassword = (plainText) => bcrypt.hashSync(String(plainText), 10);
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
@@ -17,6 +19,11 @@ const clearOtpData = (user) => {
     user.otp = null;
     user.otpExpiry = null;
     user.otpType = null;
+};
+
+const clearResetPasswordData = (user) => {
+    user.resetPasswordToken = null;
+    user.resetPasswordExpiresAt = null;
 };
 
 const createUserToken = (user) =>
@@ -44,6 +51,34 @@ const sendOtpToUser = async ({ user, otpType, subject, title, text }) => {
     }
 };
 
+const createResetPasswordLink = (req, user, token) => {
+    const baseUrl =
+        process.env.RESET_PASSWORD_URL ||
+        `${req.protocol}://${req.get("host")}/users/reset-password`;
+
+    return `${baseUrl}?email=${encodeURIComponent(user.email)}&token=${encodeURIComponent(token)}`;
+};
+
+const sendResetPasswordLink = async ({ req, user }) => {
+    const token = crypto.randomBytes(32).toString("hex");
+    const link = createResetPasswordLink(req, user, token);
+
+    user.resetPasswordToken = hashPassword(token);
+    user.resetPasswordExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await user.save();
+
+    const isSent = await sendEmail({
+        to: user.email,
+        subject: "Reset your password",
+        html: `<h1>Reset your password</h1><p><a href="${link}">Click here to reset your password</a></p><p>This link will expire in 10 minutes</p>`
+    });
+
+    if (!isSent) {
+        throw createError("Failed to send email", 500);
+    }
+};
+
 const validateOtpValue = async ({ user, otp, otpType }) => {
     if (!user.otp || !user.otpExpiry || user.otpType !== otpType) {
         throw createError("OTP not found", 400);
@@ -58,6 +93,117 @@ const validateOtpValue = async ({ user, otp, otpType }) => {
     if (!bcrypt.compareSync(String(otp), user.otp)) {
         throw createError("Invalid OTP", 400);
     }
+};
+
+const findResetPasswordUser = async (email) => {
+    const user = await userModel.findOne({
+        email,
+        confirmed: true,
+        provider: providerTypes.system
+    });
+
+    if (!user) {
+        throw createError("User not found", 404);
+    }
+
+    return user;
+};
+
+const validateResetPasswordToken = async ({ user, token }) => {
+    if (!user.resetPasswordToken || !user.resetPasswordExpiresAt) {
+        throw createError("Reset link not found", 400);
+    }
+
+    if (user.resetPasswordExpiresAt.getTime() < Date.now()) {
+        clearResetPasswordData(user);
+        await user.save();
+        throw createError("Reset link expired", 400);
+    }
+
+    if (!bcrypt.compareSync(String(token), user.resetPasswordToken)) {
+        throw createError("Invalid reset link", 400);
+    }
+};
+
+const resetUserPassword = async ({ user, token, password }) => {
+    await validateResetPasswordToken({ user, token });
+
+    user.password = hashPassword(password);
+    user.failedLoginAttempts = 0;
+    user.banUntil = null;
+    clearResetPasswordData(user);
+
+    await user.save();
+};
+
+const renderPage = ({ title, body }) => {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+</head>
+<body style="font-family: Arial, sans-serif; max-width: 420px; margin: 40px auto; padding: 20px;">
+    ${body}
+</body>
+</html>`;
+};
+
+const renderMessagePage = ({ title, message }) => {
+    return renderPage({
+        title,
+        body: `<h2>${title}</h2><p>${message}</p>`
+    });
+};
+
+const renderResetPasswordForm = ({ email, token }) => {
+    return renderPage({
+        title: "Reset password",
+        body: `<h2>Reset password</h2>
+<form method="post" action="/users/reset-password">
+    <input type="hidden" name="email" value="${email}" />
+    <input type="hidden" name="token" value="${token}" />
+    <div style="margin-bottom: 12px;">
+        <label for="password">New password</label><br />
+        <input id="password" name="password" type="password" minlength="6" required style="width: 100%; padding: 8px;" />
+    </div>
+    <div style="margin-bottom: 12px;">
+        <label for="cPassword">Confirm password</label><br />
+        <input id="cPassword" name="cPassword" type="password" minlength="6" required style="width: 100%; padding: 8px;" />
+    </div>
+    <button type="submit" style="padding: 8px 16px;">Reset password</button>
+</form>`
+    });
+};
+
+const getResetPasswordData = (data = {}) => {
+    return {
+        email: String(data.email || "").trim().toLowerCase(),
+        token: String(data.token || "").trim(),
+        password: String(data.password || "").trim(),
+        cPassword: String(data.cPassword || "").trim()
+    };
+};
+
+const validateResetPasswordData = ({ email, token, password, cPassword }) => {
+    if (!email || !emailRegex.test(email)) {
+        return "email must be valid";
+    }
+
+    if (!token) {
+        return "token is required";
+    }
+
+    if (!password || password.length < 6) {
+        return "password must be at least 6 chars";
+    }
+
+    if (password !== cPassword) {
+        return "cPassword must match password";
+    }
+
+    return null;
 };
 
 const clearBanIfExpired = async (user) => {
@@ -302,50 +448,77 @@ export const verifyEnableTwoStepVerification = async (req, res) => {
 export const forgetPassword = async (req, res) => {
     const { email } = req.body;
 
-    const user = await userModel.findOne({
-        email,
-        confirmed: true,
-        provider: providerTypes.system
-    });
+    const user = await findResetPasswordUser(email);
 
-    if (!user) {
-        throw createError("User not found", 404);
+    await sendResetPasswordLink({ req, user });
+
+    successResponse({ res, message: "Reset link sent successfully" });
+};
+
+export const showResetPasswordPage = async (req, res) => {
+    const email = String(req.query.email || "").trim().toLowerCase();
+    const token = String(req.query.token || "").trim();
+
+    if (!email || !emailRegex.test(email) || !token) {
+        return res
+            .status(400)
+            .send(renderMessagePage({ title: "Invalid link", message: "Reset link is invalid" }));
     }
 
-    await sendOtpToUser({
-        user,
-        otpType: "forgetPassword",
-        subject: "Reset your password",
-        title: "Reset your password",
-        text: "Your reset code is"
-    });
+    try {
+        const user = await findResetPasswordUser(email);
+        await validateResetPasswordToken({ user, token });
 
-    successResponse({ res, message: "OTP sent successfully" });
+        return res.status(200).send(renderResetPasswordForm({ email, token }));
+    } catch (error) {
+        return res
+            .status(error.statusCode || 400)
+            .send(renderMessagePage({ title: "Reset password", message: error.message }));
+    }
 };
 
 export const resetPassword = async (req, res) => {
-    const { email, otp, password } = req.body;
+    const { email, token, password } = req.body;
 
-    const user = await userModel.findOne({
-        email,
-        confirmed: true,
-        provider: providerTypes.system
-    });
+    const user = await findResetPasswordUser(email);
 
-    if (!user) {
-        throw createError("User not found", 404);
-    }
-
-    await validateOtpValue({ user, otp, otpType: "forgetPassword" });
-
-    user.password = hashPassword(password);
-    user.failedLoginAttempts = 0;
-    user.banUntil = null;
-    clearOtpData(user);
-
-    await user.save();
+    await resetUserPassword({ user, token, password });
 
     successResponse({ res, message: "Password reset successfully" });
+};
+
+export const resetPasswordFromForm = async (req, res) => {
+    const data = getResetPasswordData(req.body);
+    const validationMessage = validateResetPasswordData(data);
+
+    if (validationMessage) {
+        return res
+            .status(400)
+            .send(renderMessagePage({ title: "Reset password", message: validationMessage }));
+    }
+
+    try {
+        const user = await findResetPasswordUser(data.email);
+
+        await resetUserPassword({
+            user,
+            token: data.token,
+            password: data.password
+        });
+
+        return res
+            .status(200)
+            .send(
+                renderMessagePage({
+                    title: "Password reset successfully",
+                    message: "Password reset successfully"
+                })
+            );
+    } catch (error) {
+        return res
+            .status(error.statusCode || 400)
+            .send(renderMessagePage({ title: "Reset password", message: error.message }));
+    }
 };
 
 export const updatePassword = async (req, res) => {

@@ -113,7 +113,7 @@ export const forgetPasswordSchema = (data = {}) => {
 export const resetPasswordSchema = (data = {}) => {
     const value = {
         email: trimString(data.email)?.toLowerCase(),
-        otp: trimString(data.otp),
+        token: trimString(data.token),
         password: trimString(data.password),
         cPassword: trimString(data.cPassword)
     };
@@ -121,7 +121,7 @@ export const resetPasswordSchema = (data = {}) => {
     const errors = [];
 
     if (!value.email || !emailRegex.test(value.email)) errors.push("email must be valid");
-    if (!value.otp || !otpRegex.test(value.otp)) errors.push("otp must be 6 digits");
+    if (!value.token) errors.push("token is required");
     if (!value.password || value.password.length < 6) errors.push("password must be at least 6 chars");
     if (value.cPassword !== value.password) errors.push("cPassword must match password");
 

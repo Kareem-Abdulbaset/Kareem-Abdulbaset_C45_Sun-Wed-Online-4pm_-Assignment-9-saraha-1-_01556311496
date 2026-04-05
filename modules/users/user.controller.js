@@ -22,6 +22,8 @@ userRouter.post("/resend-otp", validation(resendOtpSchema), US.resendOTP);
 userRouter.post("/login", validation(loginSchema), US.signIn);
 userRouter.post("/login-confirmation", validation(loginConfirmationSchema), US.confirmLogin);
 userRouter.post("/forget-password", validation(forgetPasswordSchema), US.forgetPassword);
+userRouter.get("/reset-password", US.showResetPasswordPage);
+userRouter.post("/reset-password", US.resetPasswordFromForm);
 userRouter.patch("/reset-password", validation(resetPasswordSchema), US.resetPassword);
 userRouter.patch("/update-password", authentication, validation(updatePasswordSchema), US.updatePassword);
 userRouter.post("/enable-two-step", authentication, US.enableTwoStepVerification);
